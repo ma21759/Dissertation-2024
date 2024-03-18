@@ -1,0 +1,220 @@
+---
+title: "Data Compilation"
+author: "Robyn Sumner"
+Date_start: "2024-01-17"
+output: html_document
+---
+```{r}
+# Load packages
+library(tidyverse)
+library(tidymodels)
+library(ranger)
+library(lubridate)
+library(corrr)
+library(ggpubr)
+# Download the data
+sites_df <- read_csv( "C:/Users/robyn/OneDrive/Documents/1 - Uni of Bristol/Y3 Geography/Dissertation/Data/GRiMeDB.rda/GRiMe_sites_v2.csv")
+papers_df <- read_csv("C:/Users/robyn/OneDrive/Documents/1 - Uni of Bristol/Y3 Geography/Dissertation/Data/GRiMeDB.rda/GRiMe_sources_v2.csv")
+conc_df <- read_csv("C:/Users/robyn/OneDrive/Documents/1 - Uni of Bristol/Y3 Geography/Dissertation/Data/GRiMeDB.rda/GRiMe_concentrations_v2.csv")
+flux_df <- read_csv("C:/Users/robyn/OneDrive/Documents/1 - Uni of Bristol/Y3 Geography/Dissertation/Data/GRiMeDB.rda/GRiMe_fluxes_v2.csv")
+grime_comids_orig <- read_csv("C:/Users/robyn/OneDrive/Documents/1 - Uni of Bristol/Y3 Geography/Dissertation/Data/RiverMethaneFlux-master/RiverMethaneFlux-master/data/processed/sites_meth_comid_orig.csv")
+grades_attributes <- read_csv( "C:/Users/robyn/OneDrive/Documents/1 - Uni of Bristol/Y3 Geography/Dissertation/Data/RiverMethaneFlux-master/RiverMethaneFlux-master/data/processed/grade_attributes.csv") 
+```
+
+```{r}
+# For the sites data frame fix the NAs in channel type
+sites_df <- sites_df %>% 
+  mutate(Channel_type = ifelse(is.na(Channel_type) == TRUE, "normal", Channel_type)) 
+
+# join the sites data frame to the COMID data 
+sites_COMID <- sites_df %>% 
+  left_join(grime_comids_orig, by="Site_ID") %>% 
+  drop_na(COMID)
+
+# join the concentration data frame to the sites and sites COMID data
+conc_sites_comids <- conc_df %>% 
+  filter(Site_ID %in% sites_COMID$Site_ID) %>% 
+  left_join(sites_COMID, by="Site_ID")
+
+flux_sites_comids <- flux_df %>% 
+  filter(Site_ID %in% sites_COMID$Site_ID) %>% 
+  left_join(sites_COMID, by="Site_ID")
+
+# join the conc_sites_comids to the annual variables 
+grimeDB_attributes <- flux_sites_comids %>% 
+  left_join(grades_attributes, by="COMID")
+
+colnames(grimeDB_attributes)[grepl("_jan", colnames(grimeDB_attributes))]
+
+grimeDB_attributes_monthly <- grimeDB_attributes %>% 
+  mutate( gw_month = case_when(month(Date_start) == 1 ~ gw_jan,
+                               month(Date_start) == 2 ~ gw_feb,
+                               month(Date_start) == 3 ~ gw_mar,
+                               month(Date_start) == 4 ~ gw_apr,
+                               month(Date_start) == 5 ~ gw_may,
+                               month(Date_start) == 6 ~ gw_jun,
+                               month(Date_start) == 7 ~ gw_jul,
+                               month(Date_start) == 8 ~ gw_aug,
+                               month(Date_start) == 9 ~ gw_sep,
+                               month(Date_start) == 10 ~ gw_oct,
+                               month(Date_start) == 11 ~ gw_nov,
+                               month(Date_start) == 12 ~ gw_dec),
+          k_month =  case_when(month(Date_start) == 1 ~  k_jan,
+                               month(Date_start) == 2 ~  k_feb,
+                               month(Date_start) == 3 ~  k_mar,
+                               month(Date_start) == 4 ~  k_apr,
+                               month(Date_start) == 5 ~  k_may,
+                               month(Date_start) == 6 ~  k_jun,
+                               month(Date_start) == 7 ~  k_jul,
+                               month(Date_start) == 8 ~  k_aug,
+                               month(Date_start) == 9 ~  k_sep,
+                               month(Date_start) == 10 ~ k_oct,
+                               month(Date_start) == 11 ~ k_nov,
+                               month(Date_start) == 12 ~ k_dec),
+          q_month =  case_when(month(Date_start) == 1 ~  q_jan,
+                               month(Date_start) == 2 ~  q_feb,
+                               month(Date_start) == 3 ~  q_mar,
+                               month(Date_start) == 4 ~  q_apr,
+                               month(Date_start) == 5 ~  q_may,
+                               month(Date_start) == 6 ~  q_jun,
+                               month(Date_start) == 7 ~  q_jul,
+                               month(Date_start) == 8 ~  q_aug,
+                               month(Date_start) == 9 ~  q_sep,
+                               month(Date_start) == 10 ~ q_oct,
+                               month(Date_start) == 11 ~ q_nov,
+                               month(Date_start) == 12 ~ q_dec),
+          gpp_month = case_when(month(Date_start) == 1 ~ gpp_jan,
+                                month(Date_start) == 2 ~ gpp_feb,
+                                month(Date_start) == 3 ~ gpp_mar,
+                                month(Date_start) == 4 ~ gpp_apr,
+                                month(Date_start) == 5 ~ gpp_may,
+                                month(Date_start) == 6 ~ gpp_jun,
+                                month(Date_start) == 7 ~ gpp_jul,
+                                month(Date_start) == 8 ~ gpp_aug,
+                                month(Date_start) == 9 ~ gpp_sep,
+                                month(Date_start) == 10 ~ gpp_oct,
+                                month(Date_start) == 11 ~ gpp_nov,
+                                month(Date_start) == 12 ~ gpp_dec),
+          npp_month = case_when(month(Date_start) == 1 ~ npp_jan,
+                                month(Date_start) == 2 ~ npp_feb,
+                                month(Date_start) == 3 ~ npp_mar,
+                                month(Date_start) == 4 ~ npp_apr,
+                                month(Date_start) == 5 ~ npp_may,
+                                month(Date_start) == 6 ~ npp_jun,
+                                month(Date_start) == 7 ~ npp_jul,
+                                month(Date_start) == 8 ~ npp_aug,
+                                month(Date_start) == 9 ~ npp_sep,
+                                month(Date_start) == 10 ~ npp_oct,
+                                month(Date_start) == 11 ~ npp_nov,
+                                month(Date_start) == 12 ~ npp_dec),
+          temp_month = case_when(month(Date_start) == 1 ~ temp_jan,
+                                 month(Date_start) == 2 ~ temp_feb,
+                                 month(Date_start) == 3 ~ temp_mar,
+                                 month(Date_start) == 4 ~ temp_apr,
+                                 month(Date_start) == 5 ~ temp_may,
+                                 month(Date_start) == 6 ~ temp_jun,
+                                 month(Date_start) == 7 ~ temp_jul,
+                                 month(Date_start) == 8 ~ temp_aug,
+                                 month(Date_start) == 9 ~ temp_sep,
+                                 month(Date_start) == 10 ~ temp_oct,
+                                 month(Date_start) == 11 ~ temp_nov,
+                                 month(Date_start) == 12 ~ temp_dec),
+          precip_month = case_when(month(Date_start) == 1 ~ precip_jan/31*365,
+                                   month(Date_start) == 2 ~ precip_feb/28*365,
+                                   month(Date_start) == 3 ~ precip_mar/31*365,
+                                   month(Date_start) == 4 ~ precip_apr/30*365,
+                                   month(Date_start) == 5 ~ precip_may/31*365,
+                                   month(Date_start) == 6 ~ precip_jun/30*365,
+                                   month(Date_start) == 7 ~ precip_jul/31*365,
+                                   month(Date_start) == 8 ~ precip_aug/31*365,
+                                   month(Date_start) == 9 ~ precip_sep/30*365,
+                                   month(Date_start) == 10 ~ precip_oct/31*365,
+                                   month(Date_start) == 11 ~ precip_nov/30*365,
+                                   month(Date_start) == 12 ~ precip_dec/31*365),
+          tavg_month = case_when(month(Date_start) == 1 ~ tavg_jan,
+                                 month(Date_start) == 2 ~ tavg_feb,
+                                 month(Date_start) == 3 ~ tavg_mar,
+                                 month(Date_start) == 4 ~ tavg_apr,
+                                 month(Date_start) == 5 ~ tavg_may,
+                                 month(Date_start) == 6 ~ tavg_jun,
+                                 month(Date_start) == 7 ~ tavg_jul,
+                                 month(Date_start) == 8 ~ tavg_aug,
+                                 month(Date_start) == 9 ~ tavg_sep,
+                                 month(Date_start) == 10 ~ tavg_oct,
+                                 month(Date_start) == 11 ~ tavg_nov,
+                                 month(Date_start) == 12 ~ tavg_dec),
+          runoff_month = case_when(month(Date_start) == 1 ~ runoff_jan,
+                                   month(Date_start) == 2 ~ runoff_feb,
+                                   month(Date_start) == 3 ~ runoff_mar,
+                                   month(Date_start) == 4 ~ runoff_apr,
+                                   month(Date_start) == 5 ~ runoff_may,
+                                   month(Date_start) == 6 ~ runoff_jun,
+                                   month(Date_start) == 7 ~ runoff_jul,
+                                   month(Date_start) == 8 ~ runoff_aug,
+                                   month(Date_start) == 9 ~ runoff_sep,
+                                   month(Date_start) == 10 ~ runoff_oct,
+                                   month(Date_start) == 11 ~ runoff_nov,
+                                   month(Date_start) == 12 ~ runoff_dec),
+          sresp_month = case_when(month(Date_start) == 1 ~ sresp_jan*365, #soil resp is in daily values
+                                  month(Date_start) == 2 ~ sresp_feb*365,
+                                  month(Date_start) == 3 ~ sresp_mar*365,
+                                  month(Date_start) == 4 ~ sresp_apr*365,
+                                  month(Date_start) == 5 ~ sresp_may*365,
+                                  month(Date_start) == 6 ~ sresp_jun*365,
+                                  month(Date_start) == 7 ~ sresp_jul*365,
+                                  month(Date_start) == 8 ~ sresp_aug*365,
+                                  month(Date_start) == 9 ~ sresp_sep*365,
+                                  month(Date_start) == 10 ~ sresp_oct*365,
+                                  month(Date_start) == 11 ~ sresp_nov*365,
+                                  month(Date_start) == 12 ~ sresp_dec*365),
+          aridity_month = case_when(month(Date_start) == 1 ~ aridity_jan,
+                                    month(Date_start) == 2 ~ aridity_feb,
+                                    month(Date_start) == 3 ~ aridity_mar,
+                                    month(Date_start) == 4 ~ aridity_apr,
+                                    month(Date_start) == 5 ~ aridity_may,
+                                    month(Date_start) == 6 ~ aridity_jun,
+                                    month(Date_start) == 7 ~ aridity_jul,
+                                    month(Date_start) == 8 ~ aridity_aug,
+                                    month(Date_start) == 9 ~ aridity_sep,
+                                    month(Date_start) == 10 ~ aridity_oct,
+                                    month(Date_start) == 11 ~ aridity_nov,
+                                    month(Date_start) == 12 ~ aridity_dec),
+          nee_month = case_when(month(Date_start) == 1 ~ nee_jan,
+                                month(Date_start) == 2 ~ nee_feb,
+                                month(Date_start) == 3 ~ nee_mar,
+                                month(Date_start) == 4 ~ nee_apr,
+                                month(Date_start) == 5 ~ nee_may,
+                                month(Date_start) == 6 ~ nee_jun,
+                                month(Date_start) == 7 ~ nee_jul,
+                                month(Date_start) == 8 ~ nee_aug,
+                                month(Date_start) == 9 ~ nee_sep,
+                                month(Date_start) == 10 ~ nee_oct,
+                                month(Date_start) == 11 ~ nee_nov,
+                                month(Date_start) == 12 ~ nee_dec),
+  ) %>%
+  dplyr::select(!ends_with(c("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")))
+```
+
+```{r}
+grimeDB_attributes_monthly %>% 
+  mutate( month = month(Date_start)) 
+
+colnames(grimeDB_attributes_monthly)
+```
+
+```{r}
+new_dataframe <- grimeDB_attributes_monthly %>%
+  filter(urban > 20)
+
+new_dataframe$Site_ID
+```
+
+```{r}
+sites_to_keep <- c(7329, 7410, 3636, 3670, 1383, 1384, 1385, 1386, 1387, 1388, 1389, 1390, 1391, 1392, 1393, 1394, 1395, 1396, 1397, 1398, 1399, 1400, 9271, 9272, 9273, 11748, 11749, 11750, 11751, 12388, 12389, 12390, 12391, 3520, 9152, 9153, 3705, 3556, 3559, 3560, 3561, 3570, 3571, 3578, 3579, 3580, 3588, 3589, 3590, 3594, 3601, 9252, 9253, 11728, 11729, 11730, 11731, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028, 7338, 11345, 11346, 11347, 11348, 11349, 11350, 11309, 11310, 11311, 11312, 11332, 11333, 11334, 11335, 11336, 11337, 11325, 11359, 11323, 11327, 11328, 11330, 11331, 11338, 11339, 11344, 11352, 11357, 11358, 11360, 11361, 11362, 11366, 11367, 11368, 11369, 11382, 11385, 11386, 11388, 11395, 11340, 11341, 11342, 11343, 11351, 11363, 11364, 11381, 11392, 11393, 11394, 11395, 11381, 11381, 11382, 11392, 11393, 11394, 11395, 11340, 11341, 11342, 11343, 11351, 3640, 3645, 7286, 7287, 7567, 7573, 7609, 7610, 7612, 7614, 9192, 2246, 9141, 1130,2030,2031,2452,2454,2455,2456,2458,2459,2460,2461,2462,2599,2601,2602,2603,2604,2605,2606,2607,2608,3659,3660,7572,8615,9142)
+
+data <- subset(grimeDB_attributes_monthly, Site_ID %in% sites_to_keep)
+
+data %>% 
+  write_csv("/Users/robyn/OneDrive/Documents/1 - Uni of Bristol/Y3 Geography/Dissertation/Data/GRiMeDB.rda/data.csv")  
+
+```
