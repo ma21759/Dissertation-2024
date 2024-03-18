@@ -1,0 +1,604 @@
+---
+title: "LM results"
+author: "Robyn Sumner"
+date: "2024-01-13"
+output: html_document
+---
+
+
+```{r}
+library(tidyverse)
+library(cli)
+library(tidyr)
+library(tidyverse)
+library(cli)
+library(tidyr)
+library(ggplot2)
+library(GGally)
+library(corrgram)
+library(dplyr)
+
+all = read.csv("C:/Users/robyn/OneDrive/Documents/1 - Uni of Bristol/Y3 Geography/Dissertation/Data/Data/Tidy Data - All.csv")
+
+emissions = all |> 
+  pivot_longer(
+    cols = !(site:long),
+    names_to = c("date", ".value"), 
+    names_sep = "_",
+    values_drop_na = TRUE
+  )
+
+emissions$season =  ifelse(
+  (emissions$date) %in% c("Mar.22", "April.22", "May.22"), "spring",
+  ifelse(
+    (emissions$date) %in% c("June.22", "July.22", "Aug.22"), "summer",
+    ifelse(
+      (emissions$date) %in% c("Sept.22", "Oct.22", "Nov.21"), "autumn",
+      "winter"
+    )
+  )
+)
+
+summer_data <- emissions %>%
+  filter(season == "summer")
+
+spring_data <- emissions %>%
+  filter(season == "spring")
+
+autumn_data <- emissions %>%
+  filter(season == "autumn")
+
+winter_data <- emissions %>%
+  filter(season == "winter")
+
+emissions$Diffusive_CH4_Flux_Mean = emissions$methane.nmolm.s * 86400 * 1/1000000
+```
+
+```{r}
+ggplot(emissions) +
+  aes(x = methane.nmolm.s) +
+  geom_histogram(
+    bins = round(sqrt(length(emissions$methane.nmolm.s))), # set number of bins
+    fill = "steelblue", color = "black"
+  ) +
+  theme_minimal()
+
+ggplot(emissions, aes(x = , y = methane.nmolm.s)) +
+  geom_boxplot() + 
+  scale_y_log10()
+
+model <- lm(methane.nmolm.s ~ ., data = emissions)
+summary(model)
+
+par(mfrow = c(2, 2))
+plot(model)
+
+cooksD <- cooks.distance(model)
+influential <- cooksD[(cooksD > (3 * mean(cooksD, na.rm = TRUE)))]
+names_of_influential <- names(influential)
+influential
+
+# can take out the two top outliers
+```
+
+```{r}
+emissions_out <- emissions[-c(52,44), ]
+```
+
+
+
+```{r}
+library(dplyr)
+library(kableExtra)
+
+summary_table <- emissions %>%
+  group_by(site) %>%
+  summarise(
+    Mean_1 = round(mean(DO.mg.L, na.rm = TRUE), 2),
+    SD_1 = round(sd(DO.mg.L, na.rm = TRUE), 2),
+    Mean_2 = round(mean(pH, na.rm = TRUE), 2),
+    SD_2 = round(sd(pH, na.rm = TRUE), 2),
+    Mean_3 = round(mean(ORP.mV, na.rm = TRUE), 2),
+    SD_3 = round(sd(ORP.mV, na.rm = TRUE), 2),
+    Mean_4 = round(mean(fDOM.ppb, na.rm = TRUE), 2),
+    SD_4 = round(sd(fDOM.ppb, na.rm = TRUE), 2),
+    Mean_5 = round(mean(CON.µS.cm, na.rm = TRUE), 2),
+    SD_5 = round(sd(CON.µS.cm, na.rm = TRUE), 2),
+    Mean_6 = round(mean(Temp.C, na.rm = TRUE), 2),
+    SD_6 = round(sd(Temp.C, na.rm = TRUE), 2)
+  )
+
+summary_table <- as.data.frame(summary_table)
+
+library(kableExtra)
+library(webshot)
+
+summary_table %>%
+  kbl("html") %>%
+  kable_classic(html_font = "Arial",
+                lightable_options = "striped") %>%
+  add_header_above(c(" " = 1, "Dissolved Oxygen" = 2, "pH" = 2, "ORP" = 2, "fDOM" = 2, "Conductivity" = 2, "Temperature" = 2)) %>%
+  save_kable(file = "summary_table.html")
+
+webshot("summary_table.html", "summary_table.jpg", vwidth = 800, vheight = 600)
+
+```
+
+# correlations graph
+
+
+```{r}
+emissions_renamed = emissions
+
+emissions_renamed$Methane = emissions_renamed$methane.nmolm.s
+emissions_renamed$DO = emissions_renamed$DO.mg.L
+emissions_renamed$ORP = emissions_renamed$ORP.mV
+emissions_renamed$fDOM = emissions_renamed$fDOM.ppb
+emissions_renamed$EC = emissions_renamed$CON.µS.cm
+emissions_renamed$Temperature = emissions_renamed$Temp.C
+
+jpeg(filename =  "Graph 6a.jpg", units = "cm", res = 1000, height = 20, width = 20)
+
+
+ggcorr(emissions_renamed[,c(19,20,21,22,23,18)], 
+       method = c("pairwise.complete.obs", "pearson"),
+       nbreaks = 10,
+       name = "Pearson Correlation Coefficient (r)",
+       legend.size = 11,
+       label = TRUE,
+       label_size = 4, 
+       label_color = "black",
+       label_round = 2,
+       layout.exp =2
+#       high = "#cc3311",
+#       low = "#0077bb"
+        ) 
+
+dev.off()
+
+```
+
+# can look at specific parameters
+
+```{r}
+# Selecting only the variables you want to plot
+selected_vars <- c("DO.mg.L", "ORP.mV", "fDOM.ppb", "CON.µS.cm", "Temp.C")
+
+# Subsetting the data frame to include only the selected variables
+selected_data <- emissions[, c("methane.nmolm.s", selected_vars)]
+
+# Reshaping the data into long format
+selected_data_long <- tidyr::pivot_longer(selected_data, cols = -methane.nmolm.s, names_to = "variable", values_to = "value")
+
+# Create a function to rename the variables
+rename_variable <- function(variable) {
+  if(variable == "DO.mg.L") {
+    return("Dissolved Oxygen log(mg/L)")
+  } else if(variable == "ORP.mV") {
+    return("ORP log(mV)")
+  } else if(variable == "fDOM.ppb") {
+    return("fDOM log(ppb)")
+  } else if(variable == "CON.µS.cm") {
+    return("Electrical Conductivity log(µS/cm)")
+  } else if(variable == "Temp.C") {
+    return("Temperature log(°C)")
+  } else {
+    return(variable)
+  }
+}
+
+# Apply the function to rename the variables
+selected_data_long$variable <- sapply(selected_data_long$variable, rename_variable)
+
+jpeg(filename =  "Graph 7.jpg", units = "cm", res = 1000, height = 20, width = 20)
+
+# Plotting
+ggplot(selected_data_long, aes(x = value, y = methane.nmolm.s)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_y_log10() +  
+  geom_smooth(method = "lm", se = FALSE, show.legend = TRUE) +
+  facet_wrap(~ variable, scales = 'free_x') +
+  ylab(expression(Methane ~ log(nmol ~ m^2 ~ s^1))) +  
+  theme(axis.title.x = element_blank())
+
+dev.off()
+```
+
+# box and whisker plot of dates/seasons and methane flux
+
+```{r}
+# Load required libraries
+library(ggplot2)
+library(patchwork)
+
+# Create a custom order for the dates
+custom_order <- c("Dec.21", "Jan.22", "Feb.22", "Mar.22", "April.22", "May.22", "June.22", "July.22", "Aug.22","Sept.22", "Oct.22","Nov.21")
+
+# Convert the 'date' column in your data frame to a factor with the custom order
+emissions$date <- factor(emissions$date, levels = custom_order)
+
+# Plot 1: Violin plot with custom order of dates
+violin <- ggplot(emissions, aes(x = date, y = Diffusive_CH4_Flux_Mean, fill = season)) +
+  geom_violin() + 
+  scale_y_log10() +  
+  theme_minimal() +
+  scale_x_discrete(labels = c("Sept.22" = "September", 
+                              "Oct.22" = "October", 
+                              "Nov.21" = "November", 
+                              "Dec.21" = "December", 
+                              "Jan.22" = "January", 
+                              "Feb.22" = "February", 
+                              "Mar.22" = "March", 
+                              "April.22" = "April", 
+                              "May.22" = "May", 
+                              "June.22" = "June", 
+                              "July.22" = "July", 
+                              "Aug.22" = "August")) +
+  scale_fill_manual(values = c("spring" = "#EE6677", 
+                                "summer" = "#CCBB44", 
+                                "autumn" = "#229933", 
+                                "winter" = "#4477AA"),
+                    name = "Seasons") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+           text = element_text(size = 12, family = "sans")) +
+  labs(x = NULL, y = expression(Methane ~ predictions ~ log(nmol ~ m^2 ~ s^1)))
+
+# Create a custom order for the dates
+custom_order2 <- c("winter", "spring", "summer", "autumn")
+
+# Convert the 'date' column in your data frame to a factor with the custom order
+emissions$season <- factor(emissions$season, levels = custom_order2)
+
+
+# Plot 2: Violin plot with custom order of seasons
+violin2 <- ggplot(emissions, aes(x = season, y = Diffusive_CH4_Flux_Mean, fill = season)) +
+  geom_violin() + 
+  scale_y_log10() +
+  theme_minimal() +
+  scale_x_discrete(labels = c("spring" = "Spring", 
+                              "summer" = "Summer", 
+                              "autumn" = "Autumn", 
+                              "winter" = "Winter")) +
+  scale_fill_manual(values = c("spring" = "#EE6677", 
+                               "summer" = "#CCBB44", 
+                               "autumn" = "#229933", 
+                               "winter" = "#4477AA"),
+                    name = "Seasons") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        axis.text.y = element_blank(),  # Remove y-axis text
+        axis.ticks.y = element_blank(),  # Remove y-axis ticks
+        text = element_text(size = 12, family = "sans")) +
+  labs(x = NULL, y = NULL)  # Remove y-axis label
+
+violina = violin + geom_boxplot(width=0.1)
+violinb = violin2 + geom_boxplot(width=0.1)
+
+# Arrange plots side by side with shared y-axis and legend
+violin_combined <- violina + violinb +
+  plot_layout(widths = c(3, 1), guides = 'collect')
+
+jpeg(filename =  "Graph 8.jpg", units = "cm", res = 1000, height = 20, width = 20)
+
+# Print the combined plot
+violin_combined
+
+dev.off()
+```
+
+```{r}
+# Create a custom order for the dates
+custom_order2 <- c("winter", "spring", "summer", "autumn")
+
+# Convert the 'date' column in your data frame to a factor with the custom order
+emissions$season <- factor(emissions$season, levels = custom_order2)
+
+
+# Plot 2: Violin plot with custom order of seasons
+violin2 <- ggplot(emissions, aes(x = season, y = Temp.C, fill = season)) +
+  geom_violin(alpha = 0.6) + 
+  scale_y_log10() +
+  theme_minimal() +
+  scale_x_discrete(labels = c("spring" = "Spring", 
+                              "summer" = "Summer", 
+                              "autumn" = "Autumn", 
+                              "winter" = "Winter")) +
+  scale_fill_manual(values = c("spring" = "#EE6677", 
+                               "summer" = "#CCBB44", 
+                               "autumn" = "#229933", 
+                               "winter" = "#4477AA"),
+                    name = "Seasons") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 14),  # Adjust size here
+        axis.title.x = element_blank(),  # Remove x-axis label
+        text = element_text(size = 12, family = "sans")) +
+  ylab("Temperature log(°C)")  # Adding y-axis label
+
+violinb = violin2 + geom_boxplot(width=0.1)
+
+jpeg(filename =  "Graph 10.jpg", units = "cm", res = 1000, height = 20, width = 20)
+
+# Print the combined plot
+violinb
+
+dev.off()
+```
+
+```{r}
+ggplot(emissions, aes(x = methane.nmolm.s, y = pH, color = season)) +
+  geom_point() + 
+  scale_x_log10() +
+  geom_smooth(method = "lm", se = FALSE, show.legend = TRUE)
+
+ggplot(emissions, aes(x = methane.nmolm.s, y = fDOM.ppb, color = season)) +
+  geom_point() + 
+  scale_x_log10() +
+  geom_smooth(method = "lm", se = FALSE, show.legend = TRUE)
+
+ggplot(emissions, aes(x = methane.nmolm.s, y = CON.µS.cm, color = season)) +
+  geom_point() + 
+  scale_x_log10() +
+  geom_smooth(method = "lm", se = FALSE, show.legend = TRUE)
+
+library(ggplot2)
+
+# Selecting only the variables you want to plot
+selected_vars <- c("pH", "fDOM.ppb", "CON.µS.cm")
+
+# Reshaping the data into long format
+selected_data_long <- tidyr::pivot_longer(emissions, cols = all_of(selected_vars), names_to = "variable", values_to = "value")
+
+# Plotting
+jpeg(filename =  "Graph 9.jpg", units = "cm", res = 1000, height = 20, width = 20)
+
+ggplot(selected_data_long, aes(x = value, y = methane.nmolm.s, color = season)) +
+  geom_point() + 
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(method = "lm", se = FALSE, show.legend = TRUE) +
+  facet_wrap(~ variable, scales = 'free_x')
+
+
+dev.off()
+
+```
+
+
+```{r}
+emissions$summer = ifelse(test = emissions$season == "summer" , yes = 1, no = 0)
+emissions$spring = ifelse(test = emissions$season == "spring" , yes = 1, no = 0)
+emissions$autumn = ifelse(test = emissions$season == "autumn" , yes = 1, no = 0)
+emissions$winter = ifelse(test = emissions$season == "winter" , yes = 1, no = 0)
+
+```
+
+
+# try 
+
+```{r}
+emissions$log_methane.nmolm.s = log10(emissions$methane.nmolm.s)
+
+emissions_less = emissions[-52, ]
+
+linear_DO = lm(log_methane.nmolm.s ~ DO.mg.L, data = emissions)
+linear_pH = lm(log_methane.nmolm.s ~ pH, data = emissions)
+linear_ORP = lm(log_methane.nmolm.s ~ ORP.mV, data = emissions)
+linear_fDOM = lm(log_methane.nmolm.s ~ fDOM.ppb, data = emissions)
+linear_CON = lm(log_methane.nmolm.s ~ CON.µS.cm, data = emissions)
+linear_TEMP = lm(log_methane.nmolm.s ~ Temp.C, data = emissions)
+linear_DO_TEMP = lm(log_methane.nmolm.s ~ DO.mg.L + Temp.C, data = emissions)
+linear_DO_CON = lm(log_methane.nmolm.s ~ DO.mg.L + CON.µS.cm, data = emissions)
+linear_DO_fDOM = lm(log_methane.nmolm.s ~ DO.mg.L + fDOM.ppb, data = emissions)
+
+summary(linear_DO)
+# 21%
+summary(linear_pH)
+# 0.01, not significant
+summary(linear_ORP)
+# not significant
+summary(linear_fDOM)
+# not significant
+summary(linear_CON)
+# 16, significant
+summary(linear_TEMP)
+# 18%, significant
+summary(linear_DO_TEMP)
+# 25%, DO significant, Temp semi significant
+summary(linear_DO_CON)
+# 22% not significant
+summary(linear_DO_fDOM)
+
+# residuals vs predictions
+emissions |> mutate(
+  residual = residuals(linear_DO_TEMP),
+  prediction = predict(linear_DO_TEMP)
+  ) |>
+ggplot(aes(x=prediction, y=residual)) + 
+    scale_x_log10() +
+  scale_y_log10() +
+  geom_point() + geom_smooth(color='red', se=F)
+# residuals q-q plot
+emissions |> mutate(
+  residuals = residuals(linear_DO_TEMP),
+  ) |>
+ggplot(aes(sample = residuals)) + 
+  geom_qq() + geom_qq_line(color = "red")
+```
+
+```{r}
+emissions_less = emissions[-52, ]
+
+linear_DO = lm(log_methane.nmolm.s ~ DO.mg.L, data = emissions_less)
+linear_pH = lm(log_methane.nmolm.s ~ pH, data = emissions_less)
+linear_ORP = lm(log_methane.nmolm.s ~ ORP.mV, data = emissions_less)
+linear_fDOM = lm(log_methane.nmolm.s ~ fDOM.ppb, data = emissions_less)
+linear_CON = lm(log_methane.nmolm.s ~ CON.µS.cm, data = emissions_less)
+linear_TEMP = lm(log_methane.nmolm.s ~ Temp.C, data = emissions_less)
+linear_DO_TEMP = lm(log_methane.nmolm.s ~ DO.mg.L + Temp.C, data = emissions_less)
+linear_DO_CON = lm(log_methane.nmolm.s ~ DO.mg.L + CON.µS.cm, data = emissions_less)
+linear_DO_fDOM = lm(log_methane.nmolm.s ~ DO.mg.L + fDOM.ppb, data = emissions_less)
+
+summary(linear_DO)
+# 21%
+summary(linear_pH)
+# 0.01, not significant
+summary(linear_ORP)
+# not significant
+summary(linear_fDOM)
+# not significant
+summary(linear_CON)
+# 16, significant
+summary(linear_TEMP)
+# 18%, significant
+summary(linear_DO_TEMP)
+# 25%, DO significant, Temp semi significant
+summary(linear_DO_CON)
+# 22% not significant
+summary(linear_DO_fDOM)
+```
+
+
+Are the seasons statistically different?
+
+```{r}
+# Can we use parametric?
+subset_autumn = subset(emissions, season == 'autumn')
+subset_winter = subset(emissions, season == 'winter')
+subset_spring = subset(emissions, season == 'spring')
+subset_summer = subset(emissions, season == 'summer')
+# methane 
+shapiro.test(x=subset_autumn$methane.nmolm.s)
+shapiro.test(x=subset_winter$methane.nmolm.s)
+shapiro.test(x=subset_spring$methane.nmolm.s)
+shapiro.test(x=subset_summer$methane.nmolm.s)
+# Not all parametric therefore will use non-parametric testing
+library(broom)
+kruskal.test(season~methane.nmolm.s, data = emissions)
+
+```
+The Kruskal-Wallis test is a non-parametric test used to determine whether there are differences in the distribution of a continuous variable among two or more groups.
+
+With a p-value of 0.4847, and assuming a significance level of 0.05, you would fail to reject the null hypothesis. This suggests that there is not enough evidence to conclude that there are significant differences in the distribution of methane.nmolm.s among the different seasons.
+
+In other words, the test did not find a statistically significant difference in the levels of methane emissions across the seasons.
+
+```{r}
+subset_autumn = subset(emissions, season == 'autumn')
+subset_winter = subset(emissions, season == 'winter')
+subset_spring = subset(emissions, season == 'spring')
+subset_summer = subset(emissions, season == 'summer')
+
+wilcox.test(subset_autumn$methane.nmolm.s, subset_winter$methane.nmolm.s)
+wilcox.test(subset_autumn$methane.nmolm.s, subset_spring$methane.nmolm.s)
+wilcox.test(subset_autumn$methane.nmolm.s, subset_summer$methane.nmolm.s)
+
+
+wilcox.test(subset_winter$methane.nmolm.s, subset_spring$methane.nmolm.s)
+wilcox.test(subset_winter$methane.nmolm.s, subset_summer$methane.nmolm.s)
+
+wilcox.test(subset_spring$methane.nmolm.s, subset_summer$methane.nmolm.s)
+```
+autumn different to winter
+autumn different to spring
+winter different to summer
+spring different to summer
+
+```{r}
+# Can we use parametric?
+
+# temperature 
+shapiro.test(x=subset_autumn$Temp.C)
+shapiro.test(x=subset_winter$Temp.C)
+shapiro.test(x=subset_spring$Temp.C)
+shapiro.test(x=subset_summer$Temp.C)
+# Not all parametric therefore will use non-parametric testing
+library(broom)
+kruskal.test(season~Temp.C, data = emissions)
+
+```
+
+
+```{r}
+subset_autumn = subset(emissions, season == 'autumn')
+subset_winter = subset(emissions, season == 'winter')
+subset_spring = subset(emissions, season == 'spring')
+subset_summer = subset(emissions, season == 'summer')
+
+wilcox.test(subset_autumn$Temp.C, subset_winter$Temp.C)
+wilcox.test(subset_autumn$Temp.C, subset_spring$Temp.C)
+wilcox.test(subset_autumn$Temp.C, subset_summer$Temp.C)
+
+
+wilcox.test(subset_winter$Temp.C, subset_spring$Temp.C)
+wilcox.test(subset_winter$Temp.C, subset_summer$Temp.C)
+
+wilcox.test(subset_spring$methane.nmolm.s, subset_summer$methane.nmolm.s)
+```
+
+# Can the ratio of methane to carbon dioxide help?
+
+```{r}
+emissions$CO2.nmolm.s = emissions$CO2.μmolm.s * 1000
+
+emissions$ratio = emissions$methane.nmolm.s / emissions$CO2.nmolm.s
+```
+
+
+# can look at specific parameters
+
+```{r}
+# Selecting only the variables you want to plot
+selected_vars <- c("DO.mg.L", "pH", "ORP.mV", "fDOM.ppb", "CON.µS.cm", "Temp.C")
+
+# Subsetting the data frame to include only the selected variables
+selected_data <- emissions[, c("ratio", selected_vars)]
+
+# Reshaping the data into long format
+selected_data_long <- tidyr::pivot_longer(selected_data, cols = -ratio, names_to = "variable", values_to = "value")
+
+#jpeg(filename =  "Graph 7.jpg", units = "cm", res = 1000, height = 20, width = 20)
+
+# Plotting
+ggplot(selected_data_long, aes(x = ratio, y = value)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_y_log10() +  # Optional, adjust scales as needed
+  geom_smooth(method = "lm", se = FALSE, show.legend = TRUE) +
+  facet_wrap(~ variable, scales = 'free_y')  
+
+#dev.off()
+```
+
+```{r}
+ggplot(emissions, aes(x = CO2.nmolm.s, y = methane.nmolm.s)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_y_log10() + 
+  geom_smooth(method = "lm", se = FALSE, show.legend = TRUE) 
+```
+
+```{r}
+# Install and load the necessary packages
+library(gt)
+
+# Read your CSV file into a data frame
+secondary_table <- read.csv("Tble of comparisions.csv")
+
+# Convert NAs to blanks
+secondary_table[is.na(secondary_table)] <- ""
+
+secondary_table2 = secondary_table  %>%
+  rename("Methane flux (nmol m⁻² s⁻¹)" = Methane.flux..nmol.m.2.s.1.) %>%
+  rename("DO (mg/L)" = Dissolved.Oxygen..mg.L.) %>%
+  rename("Temperature (°C)" = Temperature...C.)%>%
+  rename("EC (μS/cm)" = Electrical.conductivity..uS.cm.)
+
+
+gt_table <- secondary_table2 %>%
+  gt() %>%
+  fmt_missing(columns = everything(), missing = "")  
+# Print the table
+gtsave(gt_table, "table_secondary.png")
+
+
+```
+
